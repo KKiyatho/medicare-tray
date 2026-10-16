@@ -1,0 +1,9 @@
+node_modules/
+.expo/
+dist/
+*.tsbuildinfo
+.env
+.env.*
+!.env.example
+npm-debug.log*
+firmware/cam/config.local.h

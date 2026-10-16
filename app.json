@@ -1,0 +1,17 @@
+{
+  "expo": {
+    "name": "메디케어 트레이",
+    "slug": "medicare-tray",
+    "version": "0.1.0",
+    "orientation": "default",
+    "userInterfaceStyle": "light",
+    "web": { "name": "Medicare Tray", "bundler": "metro" },
+    "plugins": [
+      ["expo-image-picker", {
+        "photosPermission": "환자와 약의 참고 사진을 이 기기에 등록하기 위해 사진 접근이 필요합니다.",
+        "cameraPermission": false,
+        "microphonePermission": false
+      }]
+    ]
+  }
+}

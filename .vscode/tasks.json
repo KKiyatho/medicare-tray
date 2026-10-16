@@ -1,0 +1,19 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "Medicare Tray: web preview",
+			"type": "shell",
+			"command": "npm",
+			"args": [
+				"run",
+				"web",
+				"--",
+				"--port",
+				"8081"
+			],
+			"isBackground": true,
+			"problemMatcher": []
+		}
+	]
+}
