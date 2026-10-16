@@ -129,8 +129,10 @@ void setupRoutes() {
     doc["inspectionRequired"] = uncertain;
     doc["busy"] = busy;
     doc["protocol"] = "digit-k-ok";
-    doc["faceModel"] = false;
-    doc["pillModel"] = false;
+    doc["cameraReady"] = false;
+    doc["visionMode"] = "not-integrated";
+    doc["faceId"] = -1;
+    doc["objectId"] = -1;
     doc["autonomy"] = false;
     sendJson(200, doc);
   });

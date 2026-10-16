@@ -30,7 +30,7 @@ npm run ios
 | 대상자 관리 | 성함·칭호 등록/수정/삭제, 로컬 참고 사진, 한국어 TTS 미리 듣기 |
 | 약·약통 관리 | 약 이름·대상자·참고 사진과 1~4번 약통 매핑 |
 | 복약 일정 | 시간·시간대 등록/수정/삭제, 여러 약통 선택, 활성화/중지 |
-| 기기 연결 | 설정 스냅샷 동기화, 모의 연결 끊기, 얼굴·시각·약물 일치 입력으로 안전 검증 |
+| 기기 연결 | 모의 설정 스냅샷 동기화, 별도 ESP32 브리지 상태 확인 및 빈 약통 수동 시험 |
 | 활동 기록 | 모의 배출, 차단, 중단 기록과 실제 실행 시각 |
 | 환자 화면 | 짙은 배경과 노란색 대비, 주요 안내·버튼 32 이상 글자 크기, 음성 재생, 현재 일정의 모의 인식 체험 |
 
@@ -96,56 +96,46 @@ npx expo install --check
 
 실제 연동 전에는 AiCoco Cam의 공식 SDK/지원 사양, 얼굴·약물 인식의 오류율, 보드별 직렬 핀·전압, RTC 동기화 주체, 인증된 통신 규격을 확정해야 합니다. 이후 ACK/타임아웃/재시도 멱등성, 장치 측 중복 방지 영속 원장, 모터 닫힘 센서, 긴급 정지, 접근 인증·암호화·감사 이력을 구현하고 하드웨어 및 의료 안전 검증을 수행해야 합니다.
 
-## 실제 기기 연결 — 문자 1~4 / K·OK 브리지
+## 실제 장치 연결 — 공식 Ai COCOCAM + 모터 시험
 
-**빈 약통의 벤치 시험 전용입니다. 실제 약·환자에게 사용하지 마세요.** 물리적 닫힘 센서, 끼임 방지, 의료 안전성은 검증되지 않았습니다.
+**현재 제공하는 코드는 빈 약통 벤치 시험용입니다. 환자 복약이나 실제 약 자동 배출에 사용하지 마세요.** 서보 폐쇄 확인 센서, 끼임 방지, AiCoco 인식률의 약 복용 안전성이 검증되지 않았습니다.
 
-### 준비와 배선
+### 먼저 구분해야 할 두 통신 경로
 
-- ESP32: [cam.ino](./firmware/cam/cam.ino), ESP32 Arduino core 2.0.17, ArduinoJson 7.4.3.
-- UNO: [uno.ino](./firmware/uno/uno.ino), Arduino AVR core와 Servo 라이브러리. 이 버전은 RTC/OLED가 없는 최소 통신 시험 스케치입니다. 기존 UNO 펌웨어를 사용할 경우에도 아래 문자 규격과 완료 응답 시점을 지켜야 합니다.
-- Wi-Fi 값과 기기 토큰은 Git 제외 파일 `firmware/cam/config.local.h`에만 둡니다. 새 체크아웃에서는 [config.example.h](./firmware/cam/config.example.h)를 복사해 만드세요. 비밀번호를 출력하거나 커밋하지 마세요.
-- **캠의 TX/RX GPIO는 아직 미확정입니다.** 보드 제조사 핀맵을 확인하고 로컬 설정의 `TRAY_UNO_RX_GPIO`, `TRAY_UNO_TX_GPIO`를 수정하세요. 기본 `-1`에서는 UART를 비활성화하고 오류를 출력합니다. UNO D8/D9를 ESP32 GPIO 8/9로 해석하면 안 됩니다. 카메라/플래시/PSRAM/부트 핀과 겹치지 않게 확인하세요.
+제조사 [하드웨어 연결 가이드](https://kocoafab.cc/make/view/815)와 [공식 Arduino 라이브러리](https://github.com/ekkai/Aicococam_Ardu)는 Ai COCOCAM을 UART 9600/115200 또는 I2C로 외부 MCU에 연결하는 **비전 센서**로 설명합니다. 공식 안내 자료에서 Wi-Fi 웹 서버나 앱 설정 동기화 API는 확인되지 않았습니다. 따라서 UNO가 AiCoco UART에 연결되면 제조사 프로토콜로 카메라에 요청해야 합니다. `uno.ino`의 단문자 `1`~`4` 수신 코드는 AiCoco 인식결과를 읽는 코드가 아닙니다.
 
-| 연결 | 목적 |
-| --- | --- |
-| 캠 TX → UNO D8 | UNO SoftwareSerial RX |
-| UNO D9 → 5V→3.3V 레벨 시프터 → 캠 RX | ESP32는 5V 입력 비허용 |
-| 캠 GND ↔ UNO GND ↔ 외부 서보 전원 GND | 공통 접지 |
-| 캠 VCC | **UNO와 연결 금지**, 캠은 USB-C 독립 전원 |
+현재 코드는 서로 대체 가능한 **별도 시험 경로** 두 개이며 함께 연결된 완성 시스템은 아닙니다.
 
-서보는 별도 정격 전원을 사용하고 UNO 5V에서 공급하지 마세요. 예제 UNO 서보 신호 핀은 D3/D5/D6/D10이며 실제 배선에 맞추세요. 각도 0/90도와 구동 시간은 빈 기구에서 보정해야 합니다. 비상시 전원을 물리적으로 끊을 수 있어야 합니다.
+1. **카메라+모터 로컬 진단:** `firmware\uno\aicoco-motor-diagnostic\aicoco-motor-diagnostic.ino`가 제조사 `COCOCAM` Arduino 라이브러리로 AiCoco ID를 읽고, USB 시리얼 명령으로 빈 약통 서보를 시험합니다.
+2. **앱+Wi-Fi 모터 시험:** `firmware\cam\cam.ino`는 단일 UART의 별도 programmable ESP32 host를 전제로 하며 UNO와 단문자 개폐를 시험합니다. 이 스케치는 COCOCAM AI 프로토콜을 읽지 않습니다. **AiCoco Cam 자체를 일반 ESP32처럼 취급해 이 스케치를 올리지 마세요.** 제품의 공장 AI 기능이 사라질 수 있습니다.
 
-### 업로드 및 테스트
+앱과 AiCoco의 AI 판단을 실제로 조합하려면 두 경로를 한 장치에서 함께 제공해야 합니다. 현재 확인된 보드 자료만으로 AiCoco 내부 ESP32가 사용자 펌웨어 업로드를 지원하는지, 카메라 모듈/AI 프로세서와 연결된 GPIO가 무엇인지, Wi-Fi를 제공하는지 확정할 수 없습니다. **이 보드/회로와 핀맵 확인 없이는 이 경로를 실기 연결했다고 볼 수 없습니다.**
 
-1. AiCoco Cam의 제조사 펌웨어 복구 방법을 확보한 뒤 업로드하세요. 이 코드는 제조사 AI 펌웨어와 동시에 실행되는 플러그인이 아니라 **대체 ESP32 스케치**입니다. 실제 보드에 맞는 보드 종류/업로드 옵션을 선택해야 합니다.
-2. UNO 스케치를 먼저 업로드하고 초기 닫힘 구동이 끝날 때까지 기다리세요.
-3. 캠 스케치를 업로드하고 시리얼 모니터를 **115200 bps**, 줄 끝을 **Newline**으로 여세요. Wi-Fi 접속 성공 시 IP 주소를 출력하고, 15초 실패 시 로그를 남기고 30초 간격으로 재접속합니다.
-4. 같은 Wi-Fi의 휴대폰 브라우저에서 출력된 `http://기기IP/`를 여세요. 토큰 입력 후 Box 1~4로 시험합니다. 웹 페이지는 각 요청이 끝날 때까지 버튼을 잠급니다.
-5. PC USB 시리얼에서도 `1`, `2`, `3`, `4`와 줄바꿈으로 직접 시험할 수 있습니다. UNO에는 줄바꿈 없이 **정확히 한 바이트**만 전송됩니다.
-6. UNO가 닫힘 대기 시간까지 마친 뒤 `K` 또는 `OK`를 보내면 성공 로그를 남깁니다. 개행 없는 `K`, `OK`와 `OK\r\n`, 여러 읽기에 걸친 `O`+`K`를 지원합니다.
-7. 10초 안에 완료 응답이 없으면 실패 처리하고 **재전송하지 않습니다**. 전송 전 플래시에 예약을 기록하여 전송 중 재부팅 시에도 점검 잠금을 유지합니다. 현장에서 약통·배선·UNO 유휴 상태를 확인하고 시리얼 모니터에서 `RESET`+줄바꿈으로만 해제하세요. 지연된 완료 응답이 남아 있지 않은지도 확인해야 합니다.
+### 카메라+모터 진단 스케치 업로드
 
-앱의 네이티브 환경에서도 주소와 토큰을 입력해 개폐 요청을 보낼 수 있지만, 네이티브 빌드의 HTTP 보안 정책은 별도 설정/검증이 필요합니다. 웹 미리보기에서 기기로 가는 교차 출처 요청은 허용하지 않습니다(CORS 와일드카드를 사용하지 않음). **브라우저 시험은 캠 자체 페이지를 사용하세요.** HTTP 토큰은 암호화되지 않으므로 신뢰할 수 있는 격리된 실습 LAN에서만 사용하고 포트포워딩하지 마세요.
+1. Arduino IDE의 라이브러리 관리에서 **Ai COCOCAM (KocoaFAB)**과 **Servo** 라이브러리를 설치합니다.
+2. AiCoco Cam 환경 설정에서 통신을 `SERIAL 9600`으로 선택합니다. 카메라는 USB-C로 독립 전원합니다.
+3. 카메라 TX → UNO D8(RX), UNO D9(TX) → 카메라 RX, GND 공통으로 연결합니다. 5V UNO TX가 카메라 RX 전압 규격과 호환되는지 제조사 사양을 확인하고, 필요 시 레벨 시프터를 사용하세요. VCC는 UNO에 연결하지 않습니다.
+4. [진단 스케치](./firmware/uno/aicoco-motor-diagnostic/aicoco-motor-diagnostic.ino)를 UNO에 업로드합니다. 시리얼 모니터는 `115200` baud, Newline 설정으로 엽니다.
+5. `F`는 얼굴 인식, `P`는 사물 인식 모드로 전환합니다. AiCoco의 물리 버튼으로 얼굴/사물 ID를 미리 학습해야 하며, 모니터에 인식된 learned ID와 좌표가 표시됩니다.
+6. 실제 약 없이 기계가 고정되어 있는지 확인한 후에만 USB 시리얼에서 `1`~`4`를 입력해 해당 서보를 개별 시험합니다. `OK` 줄바꿈은 이 진단 스케치에 없습니다. 모터 닫힘 시간 후 시험 완료를 USB 모니터에 표시할 뿐, 위치를 센서로 확인하지 않습니다.
 
-### API와 AI 연결 지점
+### 별도 ESP32 브리지 빌드(별도 host 보드에 한함)
 
-| API | 응답/동작 |
-| --- | --- |
-| `GET /api/status` | UART 설정, 최근 완료 응답 여부, 점검 잠금, AI/자동 실행 미지원 상태 |
-| `POST /api/test-open?box=1` | Authorization: Bearer 토큰 필요. 문자 `1` 송신 후 완료 응답 대기 |
-| `GET /api/events?after=0` | 토큰 필요. 현재 부팅 세션의 최근 20개 로그, RTC 시각 없음 |
-| `PUT /api/config`, `POST /api/enroll` | 토큰 확인 후 **501 미지원**. 저장/인식 성공으로 가장하지 않음 |
+- [cam.ino](./firmware/cam/cam.ino)는 ESP32 Arduino core 2.0.17과 ArduinoJson 7.4.3으로 컴파일되는 Wi-Fi→UNO **모터 시험 브리지**입니다. COCOCAM Arduino 라이브러리는 ESP32에서 컴파일되지 않아 이 ESP32 스케치가 AI 카메라를 조회하지 않습니다. Wi-Fi 값과 토큰은 Git 제외된 `firmware/cam/config.local.h`에 있습니다.
+- `TRAY_UNO_RX_GPIO`, `TRAY_UNO_TX_GPIO`는 별도 ESP32 host 보드 회로도에서 확인해야 합니다. 기본 `-1`이면 UART가 비활성화됩니다. GPIO 번호를 추정하지 마세요. 이 브리지를 쓰면 AiCoco camera test sketch와 하나의 UNO D8/D9 UART를 공유할 수 없습니다.
+- ESP32 TX→UNO D8(RX), UNO D9(TX)→5V-to-3.3V 레벨 변환→ESP32 RX, 공통 GND. 캠 VCC는 UNO에 연결하지 않습니다. 서보는 외부 정격 전원과 공통 GND를 사용합니다.
+- ESP32 내장 페이지 `http://기기IP/`는 빈 약통 개폐를 수동 시험합니다. 토큰 필요, 자동 재전송 없음. 타임아웃이나 재부팅 뒤 점검 잠금을 해제하기 전에 실제 기구가 안전하게 비어 있고 UNO가 유휴인지 확인하세요.
+- `GET /api/status`는 UNO UART/점검 상태를 보고하며 AI camera 상태는 미연결로 표시합니다. `POST /api/test-open?box=1`은 토큰이 필요한 수동 벤치 시험입니다. `PUT /api/config`, `/api/enroll` 및 자동 스케줄은 501/미지원입니다. 앱의 프로필 사진은 COCOCAM 학습 모델로 전송되지 않습니다.
 
-`onRecognitionCompleted(box, faceVerified, pillVerified, doseAuthorized)`는 실제 제조사 SDK에서 얼굴·약·일정/중복 방지 정책을 모두 확인한 후 Arduino loop 태스크에서 호출할 통합 지점입니다. ISR에서는 호출하지 마세요. HTTP에서 인식 성공을 주입하는 API는 없습니다. **카메라 드라이버/AI 모델/자동 일정은 이 스케치에 포함되어 있지 않습니다.**
-
-이전 `$BODY*XOR` 프레임, `TIME?`, nonce, `STOP` 명령은 제거했습니다. 요청하신 단문자 프로토콜에는 요청 ID/RTC 조회/정지 명령이 없어 안전한 자동 재시도나 재부팅을 넘는 중복 판별, 긴급 정지를 구현할 수 없습니다. UNO는 동작 중 들어온 추가 명령을 큐에 넣지 않고 버립니다. `OK`는 스케치의 닫힘 대기가 끝났다는 뜻이지 센서로 닫힘이나 복용을 확인했다는 뜻이 아닙니다.
+브라우저 미리보기에서 ESP32 HTTP로 교차 출처 요청을 하지 않습니다. **앱 테스트 페이지는 ESP32가 제공하는 내장 시험 웹페이지를 사용하세요.** HTTP 토큰은 암호화되지 않으므로 신뢰할 수 있는 격리 LAN에서만 사용하고 포트포워딩하지 마세요.
 
 ### 펌웨어 검증
 
 ```powershell
 arduino-cli compile --fqbn esp32:esp32:esp32 firmware\cam
 arduino-cli compile --fqbn arduino:avr:uno firmware\uno
+arduino-cli compile --fqbn arduino:avr:uno firmware\uno\aicoco-motor-diagnostic
 # Host C++ compiler, for the same parser header used by the ESP32:
 g++ -std=c++11 firmware\tests\uno_protocol_test.cpp -o uno-protocol-test.exe
 .\uno-protocol-test.exe
@@ -153,4 +143,13 @@ g++ -std=c++11 firmware\tests\uno_protocol_test.cpp -o uno-protocol-test.exe
 
 위 ESP32 대상은 일반 ESP32 컴파일 확인용이며 실제 AiCoco Cam 보드 호환성·UART 핀·업로드를 보증하지 않습니다. 하드웨어와 실제 카메라 인식 시험은 별도로 필요합니다. 앱 테스트는 인증 헤더, 잘못된 약통 번호, 409 점검 잠금·504 응답 오류의 비재시도, 501 설정 미지원 응답도 검사합니다.
 
-현재 확인 결과: 일반 ESP32(core 2.0.17)와 UNO(AVR core 1.8.8 / Servo 1.3.0) 컴파일 성공, 동일 UART 파서 헤더의 호스트 C++ 테스트 성공, 앱 타입 검사·31개 단위 테스트·웹 빌드 성공. 실제 UART 연결과 모터 동작은 검증하지 않았습니다.
+현재 확인 결과: ESP32 모터 브리지(core 2.0.17)와 UNO 모터 스케치(AVR core 1.8.8 / Servo 1.3.0) 및 AiCoco 진단 스케치(Ai COCOCAM 1.0.0) 컴파일 성공, 동일 UART 파서 헤더의 호스트 C++ 테스트 성공, 앱 타입 검사·31개 단위 테스트·웹 빌드 성공. 실제 카메라/UART 연결과 모터 동작은 검증하지 않았습니다. **COCOCAM 공식 라이브러리는 ESP32 빌드에서 컴파일 오류가 나므로 ESP32 쪽 카메라 통합은 구현되지 않았습니다.**
+
+### Ai COCOCAM 공식 Arduino 연결 진단 스케치
+
+코코아팹 공식 [하드웨어 연결 가이드](https://kocoafab.cc/make/view/815)와 [Arduino 라이브러리](https://github.com/ekkai/Aicococam_Ardu)는 Ai COCOCAM을 외부 MCU와 UART 9600 / UART 115200 / I2C로 연결하는 방법 및 `COCOCAM` API를 제공합니다. 이 공식 제품 문서는 Wi-Fi 앱 서버/HTTP API나 AiCoco Cam을 임의의 ESP32 스케치로 교체하는 방법을 명시하지 않습니다.
+
+- 기존 `firmware\uno\uno.ino`는 **앱 브리지의 숫자 명령**을 받는 코드입니다. Ai COCOCAM의 UART에 직접 연결하면 인식 데이터를 읽지 못합니다.
+- `firmware\uno\aicoco-motor-diagnostic\aicoco-motor-diagnostic.ino`는 Ai COCOCAM 공식 Arduino 라이브러리를 사용합니다. 카메라를 `SERIAL 9600` 모드에 두고 D8/D9/GND를 연결하면 FACE(`F`) 또는 OBJECT(`P`) learned ID와 위치를 USB 시리얼 모니터에 출력합니다. 숫자 `1`~`4` USB 명령은 별도의 빈 약통 서보 시험입니다. 카메라 인식이 곧 모터 개폐를 일으키지는 않습니다.
+- 공식 카메라는 얼굴/사물 인식 모드를 바꾸어 읽고, 사용자/약 사진을 앱에서 전송해 모델을 학습시키는 API는 확인되지 않았습니다. 인식 학습은 카메라의 물리 조작으로 수행해야 합니다. AI 결과에 약의 약리학적 정체나 신뢰 가능한 안전 보증이 있다는 뜻도 아닙니다.
+- 이 진단 스케치는 카메라/서보의 bench 확인만 지원합니다. 기존 Wi-Fi ESP32 브리지와 같은 UART를 공유할 수 없습니다. 앱→Wi-Fi→카메라→UNO 연결에는 AiCoco AI 결과를 읽는 제조사 지원 가능한 MCU/통신 포트와 UNO 모터 포트가 별도로 필요합니다. 현재 공식 SDK의 ESP32 빌드 호환성도 확인되지 않았고 실제 보드 핀맵이 없어 해당 경로는 미구현입니다. 앱 네트워크 개폐는 camera face/pill 판정을 사용하지 않습니다.

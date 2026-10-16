@@ -72,16 +72,21 @@ describe('device payload', () => {
         await assert.rejects(putConfig(base, toWireConfig(seedData(), 1), 'token'), /501.*unsupported/);
       });
     });
-    it('reports missing GPIO and AI capabilities honestly', async () => {
+    it('reports unsupported camera integration and missing GPIO honestly', async () => {
       await withDevice(() => ({
         status: 200, body: {
           v: 1, revision: 0, rtc: '', uno: false, uartReady: false,
-          inspectionRequired: true, faceModel: false, pillModel: false, autonomy: false,
+          inspectionRequired: true, busy: false, cameraReady: false,
+          visionMode: 'not-integrated', faceId: -1, objectId: -1, autonomy: false,
         },
       }), async base => {
         const status = await getStatus(base);
         assert.equal(status.uartReady, false);
         assert.equal(status.inspectionRequired, true);
+        assert.equal(status.cameraReady, false);
+        assert.equal(status.visionMode, 'not-integrated');
+        assert.equal(status.faceId, -1);
+        assert.equal(status.objectId, -1);
         assert.equal(status.autonomy, false);
       });
     });

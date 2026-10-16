@@ -7,11 +7,10 @@ import { StatusBar } from 'expo-status-bar';
 import * as ImagePicker from 'expo-image-picker';
 import * as Speech from 'expo-speech';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
-import { getStatus, putConfig, testBox } from './src/deviceClient';
-import { toWireConfig } from './src/protocol';
+import { getStatus, testBox } from './src/deviceClient';
 import {
   AppData, Configuration, decideDispense, DoseRecord, id, localDay, localTime, Medicine,
-  minutes, Profile, Schedule, syncDevice, updateConfiguration, validateConfiguration, WINDOW_MINUTES,
+  minutes, Profile, Schedule, syncDevice, updateConfiguration, WINDOW_MINUTES,
 } from './src/domain';
 import { useAppData } from './src/useAppData';
 import { Badge, Button, Card, Choice, colors, Dialog, Empty, Field, Icon, IconName, Label, Muted, s } from './src/ui';
@@ -291,24 +290,17 @@ function Application() {
   const devicePanel = <View style={{ gap: 22 }}>
     <Card>
         <View style={s.between}><View style={s.row}><View style={styles.sectionIcon}><Icon name="wifi" color={colors.teal} /></View>
-          <View><Text style={styles.cardTitle}>실제 AiCoco Cam 연결</Text><Muted>같은 Wi-Fi의 기기 HTTP API (firmware/cam)</Muted></View></View>
+          <View><Text style={styles.cardTitle}>실제 ESP32 브리지 연결</Text><Muted>같은 Wi-Fi의 UNO 모터 시험 브리지</Muted></View></View>
           <Badge label="하드웨어 미검증" tone="amber" /></View>
         <Field label="기기 주소" value={deviceUrl} onChangeText={setDeviceUrl} placeholder="http://192.168.0.20" />
         <Field label="기기 토큰 (로컬 펌웨어 설정)" value={deviceToken} onChangeText={setDeviceToken} secureTextEntry />
-        <Muted>빈 약통 전용 시험입니다. 브라우저에서는 캠 IP 주소를 직접 열어 내장 시험 페이지를 사용하세요. 앱 웹 미리보기의 교차 출처 요청은 차단됩니다.</Muted>
+        <Muted>빈 약통 전용 시험입니다. 브라우저에서는 ESP32 IP의 내장 시험 페이지를 사용하세요. AiCoco 카메라 진단은 별도의 UNO 스케치로 진행합니다.</Muted>
         <View style={s.wrap}>
           <Button label="연결 확인" small secondary icon="activity" disabled={realBusy} onPress={() => {
             void realCall(async () => { const st = await getStatus(deviceUrl);
-              return `연결됨 · UART ${st.uartReady ? '설정됨' : '미설정'} · UNO ${st.uno ? '완료 응답 수신 이력 있음' : '완료 응답 미확인'} · 현장 점검 ${st.inspectionRequired ? '필요' : '잠금 없음'} · 얼굴모델 ${st.faceModel ? '있음' : '없음'} · 약모델 ${st.pillModel ? '있음' : '없음'}`; });
+              return `ESP32 연결됨 · UNO UART ${st.uartReady ? '설정됨' : '미설정'} · COCOCAM AI 미연동 · 최근 얼굴 ID ${st.faceId} · 최근 사물 ID ${st.objectId} · UNO 완료 응답 ${st.uno ? '수신 이력 있음' : '미확인'} · 현장 점검 ${st.inspectionRequired ? '필요' : '필요 없음'}`; });
           }} />
-          <Button label="설정 전송" small icon="upload" disabled={realBusy || !data} onPress={() => {
-            void realCall(async () => {
-              if (!data) throw new Error('데이터를 불러오는 중입니다.');
-              validateConfiguration(data);
-              await putConfig(deviceUrl, toWireConfig(data, data.revision), deviceToken);
-              return `설정 v${data.revision} 저장 응답을 받았습니다. 모의 기기 설정과는 별개입니다.`;
-            });
-          }} />
+          <Button label="일정 동기화 (미지원)" small icon="upload" disabled onPress={() => {}} />
         </View>
         <Label>약통 열기 시험 (보호자 확인용 · 1칸씩)</Label>
         <View style={s.wrap}>{[1, 2, 3, 4].map(box => <Button key={box} label={`${box}번 열기`} small secondary disabled={realBusy}

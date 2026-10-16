@@ -5,10 +5,13 @@ export type DeviceStatus = {
   revision: number;
   rtc: string;
   uno: boolean;
-  faceModel: boolean;
-  pillModel: boolean;
+  cameraReady: boolean;
+  visionMode: 'not-integrated';
+  faceId: number;
+  objectId: number;
   uartReady?: boolean;
   inspectionRequired?: boolean;
+  busy?: boolean;
   autonomy?: boolean;
 };
 
